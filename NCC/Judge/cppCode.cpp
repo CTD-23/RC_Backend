@@ -1,14 +1,4 @@
-#include<bits/stdc++.h>
-using namespace std;
-
-int main(){
-int n;
-cin>>n;
-int sum;
-  for(int i=1 ; i<=n ; i++){
-  
-sum = sum+i;
-}
-cout<<sum;
-
-}
+def reverse_string(input_str):
+    # Reverse the string
+    return input_str[::-1]
+print(reverse_string(input()))

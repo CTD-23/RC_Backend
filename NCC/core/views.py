@@ -24,6 +24,8 @@ from rest_framework.renderers import JSONRenderer
 from .judgeUtils import *
 
 from datetime import datetime 
+from django.utils import timezone
+
 # Custom Authentication
 from .customAuth import *
 
@@ -35,7 +37,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.exceptions import TokenError , InvalidToken
 
-
+# throttle
+from rest_framework.throttling import UserRateThrottle, ScopedRateThrottle
 # Utils
 from .utils import getContainer,deallocate
 
@@ -53,28 +56,51 @@ class LoginApi(generics.CreateAPIView):
         password = serializer.validated_data.get('password')
 
         user = authenticate(username=username, password=password)
-        try:
-            team = Team.objects.get(Q(user1 = user) | Q(user2 = user))
-            if (team.isLogin):
-                return Response({'msg':'You are Already Logged in'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            if user is not None:
+        if user is not None:
+            print("Authenticated but not in team")
+            try:
+                team = Team.objects.get(Q(user1 = user) | Q(user2 = user))
+                if (team.isLogin):
+                    return Response({'msg':'You are Already Logged in'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                # if user is not None:
                 token = RefreshToken.for_user(user=user)
+                
                 team.isLogin = True
                 team.save()
-                return Response({'token': str(token.access_token)}, status=status.HTTP_200_OK)
-        except:
-            pass
-            
-        
-        
-        # If user not present in local db
-        # Try on main website API
-        # request 
-        print("Api Fetch")
+                data = {
+                    'token': str(token.access_token),
+                    'isJunior' : team.isJunior
+                }
+                return Response(data, status=status.HTTP_200_OK)
+            except:
+                return Response({'msg':'Try to contact organiser'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # If user not present in local db
+            # Try on main website API
+            # request 
+            URL="https://api.ctd.credenz.in/api/verify/NCC/"
 
+            responce = requests.get(url = URL+username)
+            responceData = responce.json()
+            if (responceData.get("success")):
+                if (responceData.get("team_password") == password):
+                    user = User.objects.create(username = username,password = password)
+                    team = Team.objects.create(user1 = user)
 
-        return Response(status=status.HTTP_404_NOT_FOUND)
+                    token = RefreshToken.for_user(user=user)
+                
+                    team.isLogin = True
+                    team.save()
+                    data = {
+                        'token': str(token.access_token),
+                        'isJunior' : team.isJunior
+                    }
+                    return Response(data, status=status.HTTP_200_OK)
+                else:
+                    return Response({'msg':'Incorrect Password'}, status=status.HTTP_401_UNAUTHORIZED)
+                        
+        return Response({'msg':'User not Found'},status=status.HTTP_404_NOT_FOUND)
         
 
 class RegisterApi(viewsets.GenericViewSet,mixins.CreateModelMixin):
@@ -229,17 +255,19 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
     renderer_classes = [JSONRenderer]
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'submit'
 
     def create(self, request, *args, **kwargs):
-        container = getContainer()
-        if not container:
-            return   Response({'msg':"Server is Busy"},status=status.HTTP_403_FORBIDDEN)
-        print("Allocated container ",container)
         
         data = request.data
         # print("=> Requested Data ",data)
         serializer = SubmissionSerializer(data=data)
         if serializer.is_valid():
+            container = getContainer()
+            if not container:
+                return   Response({'msg':"Server is Busy"},status=status.HTTP_403_FORBIDDEN)
+
             user = self.request.user
             userId = user.id
             team = Team.objects.get(Q(user1 = user) | Q(user2 = user))
@@ -287,7 +315,9 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                     #This team query to save users score and last update in score
                     teamQuery= Team.objects.get(teamId = team)
                     teamQuery.score += score
-                    teamQuery.lastUpdate = datetime.now()
+                    # teamQuery.lastUpdate = datetime.now()
+                    teamQuery.lastUpdate =  datetime.now()
+
                     teamQuery.save()
                 else:
                     #When answer is other than AC
@@ -296,7 +326,10 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                     serializer.validated_data['points'] = 0
                     serializer.validated_data['isCorrect'] = False
 
-                    lastSubmissionNumber = Submission.objects.filter(question=question,team=team).last().attemptedNumber
+                    try:
+                        lastSubmissionNumber = Submission.objects.filter(question=question,team=team).last().attemptedNumber
+                    except:
+                        lastSubmissionNumber = 0
                     serializer.validated_data['attemptedNumber'] = lastSubmissionNumber+1
                     serializer.validated_data['team'] = team
                     serializer.save()
@@ -323,6 +356,10 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
 
     def getMaxScore(self,question,team):
         questionQuery = Question.objects.get(questionId=question.questionId)
+        # if (questionQuery.category != team.isJunior):
+        #     #if user is trying another category question
+        #     return 0
+        
         points = questionQuery.points
         maxPoints = questionQuery.maxPoints
         print("inside get score ",question , team)
@@ -333,16 +370,18 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                 print("Right submission exits")
                 return 0
             else:
-                questionQuery.points -=1
-                questionQuery.save()
+                if (questionQuery.points-1 >= 10):
+                    questionQuery.points -=1
+                    questionQuery.save()
+
                 try:
                     submissionQuery = Submission.objects.filter(team = team ,question = question,isCorrect = False).exists()
                     if submissionQuery:
                         penalty = Submission.objects.filter(team = team ,question = question).last().attemptedNumber
                         
                         score = int(points - (penalty * 0.1 * points))
-                        print("points -> ",points,"\n maxpoints -> ",maxPoints)
-                        print("penalty -> ",penalty,"\nScore -> ",score)
+                        # print("points -> ",points,"\n maxpoints -> ",maxPoints)
+                        # print("penalty -> ",penalty,"\nScore -> ",score)
 
                         if score > 0:
                             print("score > 0")
@@ -368,6 +407,8 @@ class RcIpOp(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
     renderer_classes = [JSONRenderer]
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'rc'
 
     def create(self, request, *args, **kwargs):
         
