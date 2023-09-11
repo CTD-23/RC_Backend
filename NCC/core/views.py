@@ -32,6 +32,8 @@ from .customAuth import *
 # rcApp
 from rcapp import views
 
+import requests
+
 # JWT
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -45,9 +47,68 @@ from .utils import getContainer,deallocate
 # celery
 # from core.tasks import execute_code_task,homee
 
-class LoginApi(generics.CreateAPIView):
+
+class TimeCheck:
+    '''Class to handle time end
+    by invoking dispatch method where it is inherited
+
+        contest_time = Contest_time.objects.all()
+        end_time = contest_time[0].end_time.astimezone()
+        end_time = datetime(year=end_time.year, month=end_time.month, day=end_time.day, hour=end_time.hour, minute=end_time.minute, second=end_time.second)
+        final_time = int(end_time.timestamp())   #user end time in sec
+        current_time =  int(datetime.now().timestamp())   #crrent server time in sec
+        print("end time ",final_time,end_time)
+        print("crnt time ",current_time,datetime.now())
+        print("diff ",final_time-current_time)
+        dif = final_time-current_time
+    '''
+
+    
+    def dispatch(self, request, *args, **kwargs):
+        eventTimeQuery = ContestTime.objects.get(id=1)
+
+        eventStartTime = eventTimeQuery.startTime.astimezone()
+        eventEndTime = eventTimeQuery.endTime.astimezone()
+        startTimeConverted = datetime(year=eventStartTime.year, month=eventStartTime.month, day=eventStartTime.day, hour=eventStartTime.hour, minute=eventStartTime.minute, second=eventStartTime.second)    
+        endTimeConverted = datetime(year=eventEndTime.year, month=eventEndTime.month, day=eventEndTime.day, hour=eventEndTime.hour, minute=eventEndTime.minute, second=eventEndTime.second)    
+        
+        startTime = int(startTimeConverted.timestamp())
+        endTime = int(endTimeConverted.timestamp())
+
+
+        currentTime = int(datetime.now().timestamp())
+        # print("Event time start => ",eventStartTime)
+        # print("Event time end => ",eventEndTime)
+        # print("current time => ",datetime.now())
+
+
+        # print("*****Time*****")
+        # print("End time => ",endTime)
+        # print("Current time => ",currentTime)
+        # print("Start time => ",startTime)
+
+        # Check if time is over
+        if currentTime > endTime:
+            # print("time is over")
+            # return redirect('/home/')  # Redirect to 'home' 
+            # return Response({"msg":"Time is Ended"},status=status.HTTP_401_UNAUTHORIZED) 
+            return JsonResponse({"msg":"Time Over"},status=status.HTTP_403_FORBIDDEN) 
+        if (currentTime < startTime):
+            # print("time is not started")
+            return JsonResponse({"msg":"The contest has not started yet"},status=status.HTTP_403_FORBIDDEN) 
+
+
+        return super().dispatch(request, *args, **kwargs)
+
+
+class LoginApi(TimeCheck,generics.CreateAPIView):
     serializer_class = LoginSerializer
+    
+    
     def post(self, request, format=None):
+
+        if (not IsStarted.objects.get(id = 1).isStarted):
+            return Response({"msg":"The contest has not started yet"},status=status.HTTP_403_FORBIDDEN) 
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -57,16 +118,16 @@ class LoginApi(generics.CreateAPIView):
 
         user = authenticate(username=username, password=password)
         if user is not None:
-            print("Authenticated but not in team")
+            # print("Authenticated but not in team")
             try:
                 team = Team.objects.get(Q(user1 = user) | Q(user2 = user))
                 if (team.isLogin):
-                    return Response({'msg':'You are Already Logged in'}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({'msg':'You have already started the contest'}, status=status.HTTP_400_BAD_REQUEST)
                 
                 # if user is not None:
                 token = RefreshToken.for_user(user=user)
                 
-                team.isLogin = True
+                # team.isLogin = True
                 team.save()
                 data = {
                     'token': str(token.access_token),
@@ -79,7 +140,7 @@ class LoginApi(generics.CreateAPIView):
             # If user not present in local db
             # Try on main website API
             # request 
-            URL="https://api.ctd.credenz.in/api/verify/NCC/"
+            URL="https://api.ctd.credenz.in/api/verify/RC/"
 
             responce = requests.get(url = URL+username)
             responceData = responce.json()
@@ -133,44 +194,6 @@ def home(request):
     return HttpResponse("sdfkjasdgfhg")
 
 
-class TimeCheck:
-    '''Class to handle time end
-    by invoking dispatch method where it is inherited
-
-        contest_time = Contest_time.objects.all()
-        end_time = contest_time[0].end_time.astimezone()
-        end_time = datetime(year=end_time.year, month=end_time.month, day=end_time.day, hour=end_time.hour, minute=end_time.minute, second=end_time.second)
-        final_time = int(end_time.timestamp())   #user end time in sec
-        current_time =  int(datetime.now().timestamp())   #crrent server time in sec
-        print("end time ",final_time,end_time)
-        print("crnt time ",current_time,datetime.now())
-        print("diff ",final_time-current_time)
-        dif = final_time-current_time
-    '''
-
-    
-    def dispatch(self, request, *args, **kwargs):
-        eventTimeQuery = ContestTime.objects.get(id=1)
-        eventEndTime = eventTimeQuery.endTime.astimezone()
-        # print("Event time => ",eventEndTime)
-        endTimeConverted = datetime(year=eventEndTime.year, month=eventEndTime.month, day=eventEndTime.day, hour=eventEndTime.hour, minute=eventEndTime.minute, second=eventEndTime.second)    
-        endTime = int(endTimeConverted.timestamp())
-
-
-        currentTime = int(datetime.now().timestamp())
-        # print("current time => ",datetime.now())
-        print("*****Time*****")
-        print("End time => ",endTime)
-        print("Current time => ",currentTime)
-
-        # Check if time is over
-        if currentTime > endTime:
-            print("time is over")
-            # return redirect('/home/')  # Redirect to 'home' 
-            # return Response({"msg":"Time is Ended"},status=status.HTTP_401_UNAUTHORIZED) 
-            return JsonResponse({"msg":"Time Over"},status=status.HTTP_403_FORBIDDEN) 
-
-        return super().dispatch(request, *args, **kwargs)
 
 class QuestionViewSet(TimeCheck,viewsets.ReadOnlyModelViewSet):
     '''
@@ -188,7 +211,7 @@ class QuestionViewSet(TimeCheck,viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
         user = self.request.user
         team = Team.objects.get(Q(user1 = user) | Q(user2 = user))
-        return queryset.filter(Q(category= "junior" if team.isJunior else "senior" ) | Q(category="both"))  #return  questions filtered with two  conditions
+        return queryset.filter(Q(category= "junior" if team.isJunior else "senior" ) | Q(category="both")).order_by("questionNumber")  #return  questions filtered with two  conditions
 
 
 class RatingViewSet(viewsets.GenericViewSet,mixins.CreateModelMixin,mixins.RetrieveModelMixin,mixins.ListModelMixin):
@@ -210,6 +233,8 @@ class RatingViewSet(viewsets.GenericViewSet,mixins.CreateModelMixin,mixins.Retri
         queryset = super().get_queryset()
         return queryset
     
+
+    
 class LeaderBoardViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Team.objects.all()
     serializer_class = LeaderBoardSerializer
@@ -220,16 +245,16 @@ class LeaderBoardViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         user = self.request.user
         junior_query = Team.objects.filter(isJunior=True).order_by("-score", "lastUpdate")
-        senior_query = Team.objects.filter(isJunior=False).order_by("-score", "lastUpdate")
+        # senior_query = Team.objects.filter(isJunior=False).order_by("-score", "lastUpdate")
 
         junior_serializer = LeaderBoardSerializer(junior_query, many=True)
-        senior_serializer = LeaderBoardSerializer(senior_query, many=True)
+        # senior_serializer = LeaderBoardSerializer(senior_query, many=True)
 
         if user.is_anonymous:
             '''When user is non authorized'''
             response_data = {
                 'juniorLeaderboard': junior_serializer.data,
-                'seniorLeaderboard': senior_serializer.data,
+                # 'seniorLeaderboard': senior_serializer.data,
             }
             return Response(response_data,status=status.HTTP_200_OK)
         else:
@@ -240,7 +265,7 @@ class LeaderBoardViewSet(viewsets.ReadOnlyModelViewSet):
             response_data = {
                 'personalRank':teamRank.data,
                 'juniorLeaderboard': junior_serializer.data,
-                'seniorLeaderboard': senior_serializer.data
+                # 'seniorLeaderboard': senior_serializer.data
             }
             return Response(response_data,status=status.HTTP_200_OK)
         
@@ -266,7 +291,7 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
         if serializer.is_valid():
             container = getContainer()
             if not container:
-                return   Response({'msg':"Server is Busy"},status=status.HTTP_403_FORBIDDEN)
+                return   Response({'msg':"Server is currently busy"},status=status.HTTP_403_FORBIDDEN)
 
             user = self.request.user
             userId = user.id
@@ -282,7 +307,7 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
             # print("=> Serialized Data ",input)
 
             if isSubmitted:
-                print("*******Valid  and saved*******")
+                # print("*******Valid  and saved*******")
                 codeStatus=  runCode(question,code,language,isSubmitted,container,input)
                 deallocate(container)
                 # return_code_testcase1 = codeStatus["testcase1"]["returnCode"]    #One method to get rc from runCode 
@@ -338,7 +363,7 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                 
                 return Response(codeStatus)
             else:
-                print("*******Valid but not saved*******")
+                # print("*******Valid but not saved*******")
                 codeStatus=  runCode(question,code,language,isSubmitted,container,input)
                 # codeStatus = codeStatus.get()
                 deallocate(container)
@@ -349,7 +374,7 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                 # print("responce => ",responce)
                 return Response(codeStatus)
         else:
-            print("*******Invalid*******")
+            # print("*******Invalid*******")
             # print(request.data)
             return Response({'msg':serializer.errors})
 
@@ -362,7 +387,7 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
         
         points = questionQuery.points
         maxPoints = questionQuery.maxPoints
-        print("inside get score ",question , team)
+        # print("inside get score ",question , team)
         
         try:
             submissionQuery = Submission.objects.filter(team = team ,question = question,isCorrect=True).exists()
@@ -379,12 +404,12 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                     if submissionQuery:
                         penalty = Submission.objects.filter(team = team ,question = question).last().attemptedNumber
                         
-                        score = int(points - (penalty * 0.1 * points))
+                        score = int(points - (penalty * 0.05 * points))
                         # print("points -> ",points,"\n maxpoints -> ",maxPoints)
                         # print("penalty -> ",penalty,"\nScore -> ",score)
 
                         if score > 0:
-                            print("score > 0")
+                            # print("score > 0")
                             return score
                         print("score < 0")
                         #User will get 10 points if its score is negative for right submission
@@ -392,10 +417,10 @@ class Submit(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
                     else:
                         return points
                 except:
-                    print("score = maxpoints")
+                    # print("score = maxpoints")
                     return points
         except:
-            print("None value is returing ")
+            # print("None value is returing ")
             pass
 
 
@@ -417,18 +442,21 @@ class RcIpOp(TimeCheck,viewsets.GenericViewSet,mixins.CreateModelMixin):
         serializer = RcSubmissionSerializer(data=data)
         if serializer.is_valid():   
             # print(serializer.data)
-            # return Response({"msg":"dsfsdf"})         
+            # return Response({"msg":"dsfsdf"})    
+            container = getContainer()
+            if not container:
+                return   Response({'msg':"Server is currently busy"},status=status.HTTP_403_FORBIDDEN)     
             
-            print
-            ("*******Rc IP OP functnality ******")
+            print("*******Rc IP OP functnality ******")
             question = serializer.validated_data['question']
             input = serializer.validated_data['input']
-            codeStatus=  views.getOp(question,input)
+            codeStatus=  views.getOp(question,input,container)
             # print("ffff => ",codeStatus)
             serializer.validated_data['output'] = codeStatus
             codeStatus.update(serializer.data)
             # codeStatus = serializer.data
             # print("responce => ",codeStatus)
+            deallocate(container)
             return Response(codeStatus)
         else:
             print("*******Invalid*******")

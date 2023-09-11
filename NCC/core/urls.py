@@ -21,7 +21,7 @@ secretRouter.register(r'teamregister',TeamRegisterApi)
 urlpatterns = [
     path('home/', home,name="home"),
     path('api/', include(router.urls)),
-    path('secret/api/', include(secretRouter.urls)),
+    path('secrrrrrrrrrrret/api/', include(secretRouter.urls)),
     path('api/login/', LoginApi.as_view(),name="login"),
     # path('api/rc_in/', RcIpOp.as_view(),name="rc_in"),
 ]

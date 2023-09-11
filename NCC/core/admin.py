@@ -21,7 +21,7 @@ class TestcaseAdmin (admin.ModelAdmin):
 admin.site.register(Testcase,TestcaseAdmin)
 
 class TeamAdmin (ExportActionMixin,admin.ModelAdmin):
-    list_display = ("teamId","user1","user2","score","isJunior","lastUpdate")
+    list_display = ("teamId","user1","isLogin","score","isJunior","lastUpdate")
 admin.site.register(Team,TeamAdmin)
 
 class ContestTimeAdmin (admin.ModelAdmin):
@@ -36,5 +36,9 @@ admin.site.register(Rating,RatingAdmin)
 class ContainerAdmin(admin.ModelAdmin):
     list_display= ("id","count","containerId","status")
 admin.site.register(Container,ContainerAdmin)
+
+class IsStartedAdmin(admin.ModelAdmin):
+    list_display= ("id","isStarted")
+admin.site.register(IsStarted,IsStartedAdmin)
 
 

@@ -140,3 +140,5 @@ class Container(models.Model):
     status = models.BooleanField(default=False)
     count = models.IntegerField(default=0)
 
+class IsStarted(models.Model):
+    isStarted = models.BooleanField(default=False)

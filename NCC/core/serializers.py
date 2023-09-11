@@ -66,7 +66,7 @@ class IndividualLeaderBoardSerializer(serializers.ModelSerializer):
 
     def get_questionSolvedByUser(self, obj):
         # user = self.context['request'].user
-        questionQueryset = Question.objects.filter(Q(category= "junior" if obj.isJunior else "senior" ) | Q(category="both"))  #return  questions filtered with two same conditions
+        questionQueryset = Question.objects.filter(Q(category= "junior" if obj.isJunior else "senior" ) | Q(category="both")).order_by("questionNumber")  #return  questions filtered with two same conditions
         QDict = {}
         submissionQueryset = Submission.objects.filter(isCorrect  = True,team=obj)
         i=1

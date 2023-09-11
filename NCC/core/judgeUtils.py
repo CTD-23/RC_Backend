@@ -38,12 +38,12 @@ ErrorCodes={
 
 def execute(code, language,containerId,input):
     copy_run_py(language,containerId)
-    copy_code(code,language)
-    copy_input(input)
-    run = subprocess.run(f"python3 {JudgeFolderPath}/main.py", shell=True)
+    copy_code(code,language,containerId)
+    copy_input(input,containerId)
+    run = subprocess.run(f"python3 {JudgeFolderPath}/container{containerId}/main.py", shell=True)
     # run = subprocess.run(f"python {JudgeFolderPath}/code_run.py", shell=True)
     
-    return get_output_files()
+    return get_output_files(containerId)
 
 
 def compare(output, tc):
@@ -58,34 +58,33 @@ def compare(output, tc):
 
 def copy_run_py(language,containerId):
     src = f"{judgeUtilsDirPath}/JudgePythonScript.py"
-    dst = f"{JudgeFolderPath}/main.py"
+    dst = f"{JudgeFolderPath}/container{containerId}/main.py"
     shutil.copyfile(src, dst)
     file1 = open(dst, "a")  # append mode
     file1.write(f"\nrun_{language}({containerId})")
     file1.close()
 
-def copy_code(code,language):
-    
+def copy_code(code,language,containerId):
     if (language=="python"):
-        file_path = f"{JudgeFolderPath}/pyCode.py"
+        file_path = f"{JudgeFolderPath}/container{containerId}/pyCode.py"
     elif (language=="cpp"):
-        file_path = f"{JudgeFolderPath}/cppCode.cpp"
+        file_path = f"{JudgeFolderPath}/container{containerId}/cppCode.cpp"
     elif (language=="c"):
-        file_path = f"{JudgeFolderPath}/cCode.c"
+        file_path = f"{JudgeFolderPath}/container{containerId}/cCode.c"
     with open(file_path, 'w+') as file:
         file.write(code)
         file.close()
 
-def copy_input(tc):
-    dst = f"{JudgeFolderPath}/input.txt"
+def copy_input(tc,containerId):
+    dst = f"{JudgeFolderPath}/container{containerId}/input.txt"
     src = tc.inputFile.path
     shutil.copy(src, dst)
 
-def get_output_files():
-    output = open(f"{JudgeFolderPath}/output.txt").read()
-    err = open(f"{JudgeFolderPath}/error.txt").read()
+def get_output_files(containerId):
+    output = open(f"{JudgeFolderPath}/container{containerId}/output.txt").read()
+    err = open(f"{JudgeFolderPath}/container{containerId}/error.txt").read()
     try :
-        rc = int(open(f"{JudgeFolderPath}/returnCode.txt").read())
+        rc = int(open(f"{JudgeFolderPath}/container{containerId}/returnCode.txt").read())
     except:
         print("******Error*******")
         print("Judge did not return any return code")
@@ -97,30 +96,37 @@ def get_output_files():
     return output, err, rc
 
 #Helps to clear previous data in txt files
-def clearAll():
-    with open(f"{JudgeFolderPath}/output.txt", 'w') as f:
+def clearAll(containerId):
+    with open(f"{JudgeFolderPath}/container{containerId}/output.txt", 'w') as f:
         f.write('')
-    with open(f"{JudgeFolderPath}/error.txt", 'w') as f:
+    with open(f"{JudgeFolderPath}/container{containerId}/error.txt", 'w') as f:
         f.write('')
-    with open(f"{JudgeFolderPath}/returnCode.txt", 'w') as f:
+    with open(f"{JudgeFolderPath}/container{containerId}/returnCode.txt", 'w') as f:
+        f.write('')
+    with open(f"{JudgeFolderPath}/container{containerId}/cCode.c", 'w') as f:
+        f.write('')
+    with open(f"{JudgeFolderPath}/container{containerId}/pyCode.py", 'w') as f:
+        f.write('')
+    with open(f"{JudgeFolderPath}/container{containerId}/cppCode.cpp", 'w') as f:
         f.write('')
 
 #When run clicked
-def copy_input_for_run(tc):
-    dst = open(f"{JudgeFolderPath}/input.txt","w")
+def copy_input_for_run(tc,containerId):
+    dst = open(f"{JudgeFolderPath}/container{containerId}/input.txt","w")
     if tc:
         dst.write(tc)
     dst.close()
 
 def execute_run(code, language,containerId,tc):
     copy_run_py(language,containerId)
-    copy_code(code,language)
-    copy_input_for_run(tc)
-    run = subprocess.run(f"python3 {JudgeFolderPath}/main.py", shell=True)
+    copy_code(code,language,containerId)
+    copy_input_for_run(tc,containerId)
+    run = subprocess.run(f"python3 {JudgeFolderPath}/container{containerId}/main.py", shell=True)
 
-    return get_output_files()
-
-
+    return get_output_files(containerId)
+# def startContainer(containerId):
+#     # subprocess.run(f"docker run -d container{containerId}")
+#     subprocess.run(f"docker run -d container{containerId} ")
 
 # def runCode(question, code, language,isSubmitted,input=None):             #btn_click_status true = submit and false = run
 def runCode(question,code, language,isSubmitted,containerId,input=None):             #btn_click_status true = submit and false = run
@@ -143,7 +149,7 @@ def runCode(question,code, language,isSubmitted,containerId,input=None):        
             TC_Status["output"]=output
             TC_Status["returnCode"]=rc
             TC_Status["status"]=ErrorCodes[rc]
-        # clearAll()
+        clearAll(containerId)
         return TC_Status
     
     TCs = Testcase.objects.filter(question=question).order_by('testcaseNumber')
@@ -156,20 +162,20 @@ def runCode(question,code, language,isSubmitted,containerId,input=None):        
             individualTestcase["returnCode"] = rc
             individualTestcase["status"] = ErrorCodes[rc]
 
-            TC_Status[f"testcase{tc.testcaseNumber}"] = individualTestcase
+            TC_Status[f"TESTCASE{tc.testcaseNumber}"] = individualTestcase
             return TC_Status
         elif compare(output, tc):
             individualTestcase={}
             individualTestcase["returnCode"] = rc
             individualTestcase["status"] = ErrorCodes[rc]
             
-            TC_Status[f"testcase{tc.testcaseNumber}"] = individualTestcase
+            TC_Status[f"TESTCASE{tc.testcaseNumber}"] = individualTestcase
    
         else:
             individualTestcase={}
             individualTestcase["returnCode"] = 69
             individualTestcase["status"] = ErrorCodes[69]
-            TC_Status[f"testcase{tc.testcaseNumber}"] = individualTestcase
+            TC_Status[f"TESTCASE{tc.testcaseNumber}"] = individualTestcase
 
         # clearAll()
         
